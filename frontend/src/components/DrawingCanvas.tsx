@@ -1,79 +1,58 @@
 'use client';
 
 import { useEffect, useRef, type RefObject } from 'react';
-import { drawStroke } from '@/lib/canvasUtils';
+import { drawStroke, drawHandSkeleton } from '@/lib/canvasUtils';
 import { useAppStore } from '@/store/appStore';
-import type { Point, Stroke } from '@/types';
+import type { Stroke } from '@/types';
+
+type Lm = { x: number; y: number };
 
 interface Props {
   drawCanvasRef: RefObject<HTMLCanvasElement | null>;
   currentStrokeRef: RefObject<Stroke | null>;
-  cursorRef: RefObject<Point | null>;
+  landmarksRef: RefObject<Lm[]>;
+  videoRef: RefObject<HTMLVideoElement | null>;
 }
 
-export default function DrawingCanvas({ drawCanvasRef, currentStrokeRef, cursorRef }: Props) {
-  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
+export default function DrawingCanvas({ drawCanvasRef, currentStrokeRef, landmarksRef, videoRef }: Props) {
+  const lmCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Fill white background once
+  // Size canvases on mount
   useEffect(() => {
-    const bg = bgCanvasRef.current;
-    if (!bg) return;
-    bg.width = window.innerWidth;
-    bg.height = window.innerHeight;
-    const ctx = bg.getContext('2d')!;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, bg.width, bg.height);
-  }, []);
-
-  // Size draw canvas on mount
-  useEffect(() => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     const draw = drawCanvasRef.current;
-    if (!draw) return;
-    draw.width = window.innerWidth;
-    draw.height = window.innerHeight;
+    if (draw) { draw.width = w; draw.height = h; }
+    const lm = lmCanvasRef.current;
+    if (lm) { lm.width = w; lm.height = h; }
   }, [drawCanvasRef]);
 
-  // RAF render loop — reads store state directly to avoid re-render overhead
+  // RAF loop: strokes on draw-canvas, skeleton on lm-canvas
   useEffect(() => {
     const draw = drawCanvasRef.current;
-    if (!draw) return;
-    const ctx = draw.getContext('2d')!;
+    const lm = lmCanvasRef.current;
+    if (!draw || !lm) return;
+
+    const ctx   = draw.getContext('2d')!;
+    const lmCtx = lm.getContext('2d')!;
     let rafId: number;
 
     function render() {
-      const { strokes, mode, color, brushSize } = useAppStore.getState();
+      const { strokes } = useAppStore.getState();
+      const w = draw!.width;
+      const h = draw!.height;
 
-      ctx.clearRect(0, 0, draw!.width, draw!.height);
-
-      // Paint all committed strokes
-      for (const stroke of strokes) {
-        drawStroke(ctx, stroke);
-      }
-
-      // Paint current in-progress stroke
+      ctx.clearRect(0, 0, w, h);
+      for (const stroke of strokes) drawStroke(ctx, stroke);
       const current = currentStrokeRef.current;
-      if (current && current.points.length >= 2) {
-        drawStroke(ctx, current);
-      }
+      if (current && current.points.length >= 2) drawStroke(ctx, current);
 
-      // Cursor dot at index fingertip
-      const cursor = cursorRef.current;
-      if (cursor) {
-        ctx.save();
-        ctx.globalCompositeOperation = 'source-over';
-        const isEraser = mode === 'eraser';
-        ctx.strokeStyle = isEraser ? '#94a3b8' : color;
-        ctx.fillStyle = isEraser ? 'transparent' : color;
-        ctx.lineWidth = 2;
-        const r = isEraser ? brushSize * 1.5 : brushSize / 2;
-        ctx.beginPath();
-        ctx.arc(cursor.x, cursor.y, r, 0, Math.PI * 2);
-        if (isEraser) {
-          ctx.stroke();
-        } else {
-          ctx.fill();
-        }
-        ctx.restore();
+      lmCtx.clearRect(0, 0, w, h);
+      const lms = landmarksRef.current;
+      if (lms.length >= 21) {
+        const vw = videoRef.current?.videoWidth ?? 0;
+        const vh = videoRef.current?.videoHeight ?? 0;
+        drawHandSkeleton(lmCtx, lms, w, h, vw, vh);
       }
 
       rafId = requestAnimationFrame(render);
@@ -81,12 +60,14 @@ export default function DrawingCanvas({ drawCanvasRef, currentStrokeRef, cursorR
 
     render();
     return () => cancelAnimationFrame(rafId);
-  }, [drawCanvasRef, currentStrokeRef, cursorRef]);
+  }, [drawCanvasRef, currentStrokeRef, landmarksRef, videoRef]);
 
   return (
-    <div className="absolute inset-0">
-      <canvas ref={bgCanvasRef} className="absolute inset-0" />
-      <canvas ref={drawCanvasRef} className="absolute inset-0" />
-    </div>
+    <>
+      {/* z-10: stroke canvas (transparent — camera shows through) */}
+      <canvas ref={drawCanvasRef} className="absolute inset-0" style={{ zIndex: 10 }} />
+      {/* z-20: landmark skeleton canvas */}
+      <canvas ref={lmCanvasRef} className="absolute inset-0" style={{ zIndex: 20 }} />
+    </>
   );
 }

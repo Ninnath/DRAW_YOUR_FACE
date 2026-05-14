@@ -1,43 +1,56 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useCallback } from 'react';
+import type { NormalizedLandmark } from '@mediapipe/hands';
 import { useCamera } from '@/hooks/useCamera';
 import { useHandTracking } from '@/hooks/useHandTracking';
 import { useDrawing } from '@/hooks/useDrawing';
+import { type GestureEvent } from '@/lib/gestures';
 import CameraFeed from '@/components/CameraFeed';
 import DrawingCanvas from '@/components/DrawingCanvas';
 import PaletteHUD from '@/components/PaletteHUD';
 import ModeIndicator from '@/components/ModeIndicator';
-import SaveButton from '@/components/SaveButton';
-import ActionButtons from '@/components/ActionButtons';
+import BottomBar from '@/components/BottomBar';
 
 export default function DrawingApp() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const drawCanvasRef = useRef<HTMLCanvasElement>(null);
+  const landmarksRef = useRef<NormalizedLandmark[]>([]);
 
   useCamera(videoRef);
 
-  const { currentStrokeRef, cursorRef, handleResults } = useDrawing(drawCanvasRef);
+  const { currentStrokeRef, handleResults } = useDrawing(drawCanvasRef, videoRef);
 
-  useHandTracking(videoRef, handleResults);
+  const onResults = useCallback(
+    (lms: NormalizedLandmark[], gesture: GestureEvent) => {
+      landmarksRef.current = lms;
+      handleResults(lms, gesture);
+    },
+    [handleResults],
+  );
 
+  useHandTracking(videoRef, onResults);
+
+  // Layer order (z-index):
+  //   0 — camera video (background, 85% opacity)
+  //  10 — draw canvas (transparent, strokes above camera)
+  //  20 — landmark canvas (skeleton above strokes)
+  //  30 — HUD (palette, status, bottom bar)
   return (
-    <div className="relative w-screen h-screen overflow-hidden">
-      {/* Hidden camera feed (shown as PiP) */}
+    <div className="relative w-screen h-screen overflow-hidden bg-black">
       <CameraFeed videoRef={videoRef} />
 
-      {/* Drawing surface */}
       <DrawingCanvas
         drawCanvasRef={drawCanvasRef}
         currentStrokeRef={currentStrokeRef}
-        cursorRef={cursorRef}
+        landmarksRef={landmarksRef}
+        videoRef={videoRef}
       />
 
-      {/* HUD overlays */}
+      {/* HUD */}
       <ModeIndicator />
       <PaletteHUD />
-      <SaveButton drawCanvasRef={drawCanvasRef} />
-      <ActionButtons />
+      <BottomBar drawCanvasRef={drawCanvasRef} />
     </div>
   );
 }

@@ -10,7 +10,8 @@ export default function CameraFeed({ videoRef }: Props) {
   return (
     <video
       ref={videoRef}
-      className="absolute top-3 right-3 w-40 rounded-lg opacity-70 z-20 scale-x-[-1]"
+      className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
+      style={{ zIndex: 0, opacity: 0.85 }}
       playsInline
       muted
     />

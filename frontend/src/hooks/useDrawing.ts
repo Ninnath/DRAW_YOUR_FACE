@@ -5,41 +5,42 @@ import type { NormalizedLandmark } from '@mediapipe/hands';
 import { GestureEvent } from '@/lib/gestures';
 import { mapToCanvas } from '@/lib/canvasUtils';
 import { useAppStore } from '@/store/appStore';
-import type { Point, Stroke } from '@/types';
+import type { Stroke } from '@/types';
 
 interface DrawingRefs {
   currentStrokeRef: RefObject<Stroke | null>;
-  cursorRef: RefObject<Point | null>;
   handleResults: (landmarks: NormalizedLandmark[], gesture: GestureEvent) => void;
 }
 
-export function useDrawing(drawCanvasRef: RefObject<HTMLCanvasElement | null>): DrawingRefs {
+export function useDrawing(
+  drawCanvasRef: RefObject<HTMLCanvasElement | null>,
+  videoRef: RefObject<HTMLVideoElement | null>,
+): DrawingRefs {
   const currentStrokeRef = useRef<Stroke | null>(null);
-  const cursorRef = useRef<Point | null>(null);
 
   const handleResults = useCallback(
     (landmarks: NormalizedLandmark[], gesture: GestureEvent) => {
       const { color, brushSize, setMode, pushStroke } = useAppStore.getState();
       const canvas = drawCanvasRef.current;
 
-      // No hand detected — commit any pending stroke and clear cursor
+      // No hand detected — commit any pending stroke
       if (!landmarks.length) {
         if (currentStrokeRef.current && currentStrokeRef.current.points.length > 1) {
           pushStroke({ ...currentStrokeRef.current, points: [...currentStrokeRef.current.points] });
         }
         currentStrokeRef.current = null;
-        cursorRef.current = null;
         setMode('idle');
         return;
       }
 
       const w = canvas?.width ?? window.innerWidth;
       const h = canvas?.height ?? window.innerHeight;
+      const videoW = videoRef.current?.videoWidth ?? 0;
+      const videoH = videoRef.current?.videoHeight ?? 0;
 
       // Index fingertip = landmark 8
       const tip = landmarks[8];
-      const cursor = mapToCanvas(tip.x, tip.y, w, h);
-      cursorRef.current = cursor;
+      const cursor = mapToCanvas(tip.x, tip.y, w, h, videoW, videoH);
 
       switch (gesture) {
         case GestureEvent.PenDown: {
@@ -82,8 +83,8 @@ export function useDrawing(drawCanvasRef: RefObject<HTMLCanvasElement | null>): 
         }
       }
     },
-    [drawCanvasRef],
+    [drawCanvasRef, videoRef],
   );
 
-  return { currentStrokeRef, cursorRef, handleResults };
+  return { currentStrokeRef, handleResults };
 }
