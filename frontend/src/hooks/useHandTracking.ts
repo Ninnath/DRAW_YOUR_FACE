@@ -21,7 +21,7 @@ export function useHandTracking(
       const { Hands } = await import('@mediapipe/hands');
 
       const hands = new Hands({
-        locateFile: (f: string) => `/mediapipe/hands/${f}`,
+        locateFile: (f: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mediapipe/hands/${f}`,
       });
 
       hands.setOptions({
